@@ -35,8 +35,8 @@
     {:friction 0.995, :board :felt}                             ; default
     )))
 (defn create-ball [num] "Creates a basic ball for "
-  {:num num :x 0 :y 0 :radius 10 :weight 100
-   :velocity {:x (- (rand-int 20) 10) :y (- (rand-int 20) 10)}})
+  {:num      num :x 0 :y 0 :radius 10 :weight 100
+   :velocity {:x (* (rand-nth [-1 1]) (+ (rand-int 100) 50)) :y (* (rand-nth [-1 1]) (+ (rand-int 100) 50)) }})
 (defn rack [balls centers]
   (if (not (= (count balls) (count centers)))
     (throw (RuntimeException. (str "Racking failed due to mismatch in counts. " (count balls) " " (count centers)))))
@@ -71,14 +71,14 @@
   (assoc table :balls (sort-by :num (concat (rack-solids (:balls table))
                                             (rack-eight (:balls table))
                                             (rack-stripes (:balls table))))))
-(defn create-table [material-type size] {
+(defn create-table [material-type width height] {
   :balls    (map create-ball (drop 1 (range 16)))
   :friction (:friction (material-type->properties material-type))
-  :width    (:width size)
-  :height   (:height size)
+  :width    width
+  :height   height
   })
 
-(defn create-testing-table [size]
+(defn create-testing-table [width height]
   (let [b1 (-> (create-ball 1)
                (assoc-in [:velocity :x] 10)
            )
@@ -89,8 +89,8 @@
    {
     :balls    [b1 b2]
     :friction (:friction (material-type->properties "regular"))
-    :width    (:width size)
-    :height   (:height size)
+    :width    width
+    :height   height
   }))
 
 (defn step-ball [step-size table ball]
@@ -212,18 +212,29 @@
                    (assoc-in [:velocity :y] (:y vb-prime)))
        })
     nil))
+(defn handle-table-collision [balls table]
+  (reduce
+      (fn [l ball] (conj l (cond
+                             (> 5 (:x ball)) (assoc-in ball [:velocity :x] (Math/abs ^double (get-in ball [:velocity :x])))
+                             (< (- (:width table) 5) (:x ball)) (assoc-in ball [:velocity :x] (* -1 (Math/abs ^double (get-in ball [:velocity :x]))))
+                             (> 5 (:y ball)) (assoc-in ball [:velocity :y] (Math/abs ^double (get-in ball [:velocity :y])))
+                             (< (- (:height table) 5) (:y ball)) (assoc-in ball [:velocity :y] (* -1 (Math/abs ^double (get-in ball [:velocity :y]))))
+                             :else ball
+                             )))
+      [] balls))
 
 (defn step-table [step-size table] "Basic idea for the algorithm is move balls, check intersections, update velocities as if they bounced. Let the updated velocities take care of fixing the positions over time."
   (let [balls (map (partial step-ball step-size table) (:balls table))
         collision-balls (filter some?
                                 (map (fn [[ball-a ball-b]] (handle-collision ball-a ball-b))
                                      (intersect-list balls)))
-        end-step-balls (reduce #(-> %1
-                                    (assoc (get-in %2 [:ball-a :num]) (:ball-a %2))
-                                    (assoc (get-in %2 [:ball-b :num]) (:ball-b %2)))
-                               (reduce #(assoc %1 (:num %2) %2) {} balls)
-                               collision-balls)]
-    (assoc table :balls (into [] (sort-by :num (vals end-step-balls))))))
+        end-step-balls (vals (reduce #(-> %1
+                                          (assoc (get-in %2 [:ball-a :num]) (:ball-a %2))
+                                          (assoc (get-in %2 [:ball-b :num]) (:ball-b %2)))
+                                     (reduce #(assoc %1 (:num %2) %2) {} balls)
+                                     collision-balls))
+        table-collision-balls (handle-table-collision end-step-balls table)]
+    (assoc table :balls (sort-by :num table-collision-balls))))
 (defn sim-table [max-steps step-size table]
   (loop [t table
          ct 0]
@@ -240,8 +251,8 @@
         (recur (step-ball step-size table b) (inc ct))))))
 
 (comment "Ball defs"
-  (def default-table (rack-balls (create-table :regular 200)))
-  (def test-table (create-testing-table 200))
+  (def default-table (rack-balls (create-table :regular 200 200)))
+  (def test-table (create-testing-table 200 200))
   (def stationary-ball (create-ball 1))
   (def x-moving-ball (assoc-in (create-ball 1) [:velocity :x] 10))
   (def y-moving-ball (assoc-in (create-ball 1) [:velocity :y] -10))
@@ -256,6 +267,7 @@
   (def ball-b (second balls))
   (def step-size 100)
   (def friction 0.97)
+  (def friction 0.999)
   (sim-ball-alone ball 2000 100 table)
   (step-ball ball 100 table ball)
   (step-table 10 table)
