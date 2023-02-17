@@ -36,8 +36,7 @@
     )))
 (defn create-ball [num] "Creates a basic ball for "
   {:num num :x 0 :y 0 :radius 10 :weight 100
-   :velocity {:x (- (rand-int 20) 10) :y (- (rand-int 20) 10)}
-   :spin {:x 0 :y 0 :z 0}})
+   :velocity {:x (- (rand-int 20) 10) :y (- (rand-int 20) 10)}})
 (defn rack [balls centers]
   (if (not (= (count balls) (count centers)))
     (throw (RuntimeException. (str "Racking failed due to mismatch in counts. " (count balls) " " (count centers)))))
@@ -114,9 +113,7 @@
   (-> ball
       (assoc-in [:velocity :x] 0)
       (assoc-in [:velocity :y] 0)
-      (assoc-in [:spin :x] 0)
-      (assoc-in [:spin :y] 0)
-      (assoc-in [:spin :z] 0)))
+))
 (defn intersects? [ball-a ball-b]
   (let [x-diff (- (:x ball-a) (:x ball-b))
         y-diff (- (:y ball-a) (:y ball-b))
