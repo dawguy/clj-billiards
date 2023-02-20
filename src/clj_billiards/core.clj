@@ -35,8 +35,8 @@
     {:friction 0.995, :board :felt}                             ; default
     )))
 (defn create-ball [num] "Creates a basic ball for "
-  {:num      num :x 0 :y 0 :radius 10 :weight 100
-   :velocity {:x (* (rand-nth [-1 1]) (+ (rand-int 100) 50)) :y (* (rand-nth [-1 1]) (+ (rand-int 100) 50)) }})
+  {:num num :x 0 :y 0 :radius 10 :weight 100
+   :velocity {:x 0 :y 0}})
 (defn rack [balls centers]
   (if (not (= (count balls) (count centers)))
     (throw (RuntimeException. (str "Racking failed due to mismatch in counts. " (count balls) " " (count centers)))))
@@ -46,37 +46,61 @@
     (if (nil? ball)
       racked-balls
       (recur rem-balls rem-centers (conj racked-balls (assoc (assoc ball :x (:x c)) :y (:y c)))))))
-(defn rack-solids [all-balls]
-  (rack (take 7 all-balls)
-        [{:x 10 :y 10}
-         {:x 20 :y 20}
-         {:x 30 :y 30}
-         {:x 40 :y 40}
-         {:x 50 :y 50}
-         {:x 60 :y 60}
-         {:x 70 :y 70}]))
-(defn rack-stripes [all-balls]
-  (rack (drop 8 all-balls)
-        [{:x 10 :y -10}
-         {:x 20 :y -20}
-         {:x 30 :y -30}
-         {:x 40 :y -40}
-         {:x 50 :y -50}
-         {:x 60 :y -60}
-         {:x 70 :y -70}]))
-(defn rack-eight [all-balls]
-  (rack (take 1 (drop 7 all-balls))
-        [{:x 0 :y 0}]))
-(defn rack-balls [table]
-  (assoc table :balls (sort-by :num (concat (rack-solids (:balls table))
-                                            (rack-eight (:balls table))
-                                            (rack-stripes (:balls table))))))
+; cos 45 == .525321988818
+; sin 45 == .850903524534
+;            [0,0]
+;         (-1,1)[1,1]
+;      [-2,2]<0,2>(2,2)
+;   (-3,3)[-1,3](1,3)[3,3]
+; [-4,4](-2,4)(0,4)[2,4](4,4)
+(defn positions [radius vertical-stack]
+  (let [r (* 1.05 radius)
+        w (if vertical-stack
+            (* r (Math/cos 45))
+            (* r (Math/sin 45)))
+        h (if vertical-stack
+            (* r (Math/sin 45))
+            (* r (Math/cos 45)))
+        pos (if vertical-stack
+              (fn [x y] {:x (* x w) :y (* y h)})
+              (fn [y x] {:x (* x w) :y (* y h)}))]
+    {
+     :solids  (shuffle [(pos 0 0) (pos 1 1) (pos -2 2) (pos -1 3)
+                        (pos 3 3) (pos -4 4) (pos 2 4)])
+     :stripes (shuffle [(pos -1 1) (pos 1 2) (pos -3 3) (pos 1 3)
+                        (pos -2 4) (pos 0 4) (pos 4 4)])
+     :eight   [(pos 0 2)]
+     :cue     [(pos 0 -20)]
+     }))
+(defn rack-balls [balls vertical-stack]
+  (let [p (positions (:radius (first balls)) vertical-stack)]
+    (loop [[b & rem] balls
+           p p
+           racked-balls []]
+      (if (nil? b)
+        racked-balls
+        (let [next-pos (cond
+                         (= 0 (:num b)) :cue
+                         (< 0 (:num b) 8) :solids
+                         (= 8 (:num b)) :eight
+                         (< 8 (:num b)) :stripes
+                         :else :missing)]
+          (if (= :missing next-pos)
+            racked-balls
+            (recur rem
+                   (assoc p next-pos (rest (get p next-pos)))
+                   (conj racked-balls (-> b
+                                          (assoc :x (:x (first (get p next-pos))))
+                                          (assoc :y (:y (first (get p next-pos)))))))))))))
+(defn rack-table [table]
+  (assoc table :balls (sort-by :num (rack-balls (:balls table) (:vertical-stack table)))))
 (defn create-table [material-type width height] {
-  :balls    (map create-ball (drop 1 (range 16)))
+  :balls    (map create-ball (range 16))
   :friction (:friction (material-type->properties material-type))
   :width    width
   :height   height
-  })
+  :vertical-stack true
+})
 
 (defn create-testing-table [width height]
   (let [b1 (-> (create-ball 1)
@@ -251,7 +275,7 @@
         (recur (step-ball step-size table b) (inc ct))))))
 
 (comment "Ball defs"
-  (def default-table (rack-balls (create-table :regular 200 200)))
+  (def default-table (rack-table (create-table :regular 200 200)))
   (def test-table (create-testing-table 200 200))
   (def stationary-ball (create-ball 1))
   (def x-moving-ball (assoc-in (create-ball 1) [:velocity :x] 10))
@@ -263,6 +287,7 @@
   (def table default-table)
   (def table test-table)
   (def balls (:balls table))
+  (def all-balls (:balls table))
   (def ball-a (first balls))
   (def ball-b (second balls))
   (def step-size 100)
