@@ -1,8 +1,14 @@
 (ns clj-billiards.core
   (:require [clojure.core.async :as a
                                 :refer [>! <! >!! <!! go chan buffer close! thread
-                                        alts! alts!! timeout]])
+                                        alts! alts!! timeout]]
+            [clojure.test :refer [run-tests]])
   )
+
+(defn tests []
+  ;(require 'clj-billiards.core-test :reload-all)
+  (run-tests 'clj-billiards.core-test)
+)
 
 ; Idea here. Create a billiards game based on Tables that players can start playing at.
 ; Then simulate a pool hall tournament by having a bracket and as each match ends new players are able to get assigned to the table.
@@ -158,11 +164,11 @@
                                           [a b])) rem)))))))
 (defn translate-frame-of-reference [v-a v-b]
   [(-> v-a
-       (assoc :x (- (:x v-a) (:x v-b)))
-       (assoc :y (- (:y v-a) (:y v-b))))
-   (-> v-b
-       (assoc :x 0)
-       (assoc :y 0))])
+    (assoc :x (- (:x v-a) (:x v-b)))
+    (assoc :y (- (:y v-a) (:y v-b))))
+  (-> v-b
+    (assoc :x 0)
+    (assoc :y 0))])
 (defn v-dot [v-a v-b]
   (+ (* (:x v-a) (:x v-b))
      (* (:y v-a) (:y v-b))))
@@ -190,28 +196,6 @@
   )
 (defn v2-prime [v-a v-b c-a c-b] (v1-prime v-b v-a c-b c-a))
 
-(comment
-  (def b-a (-> (create-ball 1)
-               (assoc-in [:velocity :x] 10)
-               (assoc-in [:velocity :y] 0)))
-  (def b-b (-> (create-ball 2)
-               (assoc-in [:velocity :x] 5)
-               (assoc-in [:velocity :y] -5)
-               (assoc-in [:x] 7.23)                           ; 7.23 is roughly the center for a collision between two balls of radius 5
-               (assoc-in [:y] 7.23)))
-  (def v-a (:velocity b-a))
-  (def v-b (:velocity b-b))
-  (def c-a {:x (:x b-a) :y (:y b-a)})
-  (def c-b {:x (:x b-b) :y (:y b-b)})
-  (v1-prime v-a v-b c-a c-b)
-  (v2-prime v-a v-b c-a c-b)
-  (v1-prime (:velocity b-a)
-            (:velocity b-b)
-            {:x (:x b-a) :y (:y b-a)}
-            {:x (:x b-b) :y (:y b-b)})
-  (v-sub (:velocity b-a) (:velocity b-b))
-  (v-dot (:velocity b-a) (:velocity b-b))
-,)
 ; Physics for math equations
 ; Vai = Vbf
 ; Vaf = -Vbi
