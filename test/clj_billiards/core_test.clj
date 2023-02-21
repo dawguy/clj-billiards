@@ -4,8 +4,15 @@
             [clj-billiards.test-helpers :refer [rel= v-rel=]]))
 
 (deftest ReportingLearningTest
-  (is (rel= (clj-billiards.core/v-dot {:x 0.333 :y 3.5} {:x 4.5 :y 2.333}) 9.664 0.0001))
-)
+  (testing "Rel="
+    (is (rel= (clj-billiards.core/v-dot {:x 0.333 :y 3.5} {:x 4.5 :y 2.333})
+              9.664
+              0.0001))))
+(deftest ReportingLearningOtherTest
+  (testing "V Rel="
+    (is (v-rel= (clj-billiards.core/v-sub {:x 0.333 :y 3.5} {:x 4.5 :y 2.333})
+                {:x -4.167 :y 1.166}
+                0.001))))
 
 (deftest VectorOperationsTest
   (testing "Dot product"
