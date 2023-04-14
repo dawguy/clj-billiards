@@ -43,7 +43,7 @@
    :friction (:friction (material-type->properties material-type))
    :width    width
    :height   height
-   :vertical-stack true
+   :vertical-stack false
   })
 
 ; cos 45 == .525321988818
@@ -53,23 +53,23 @@
 ;      [-2,2]<0,2>(2,2)
 ;   (-3,3)[-1,3](1,3)[3,3]
 ; [-4,4](-2,4)(0,4)[2,4](4,4)
-(defn racked-positions [radius vertical-stack]
+(defn racked-positions [radius vertical-stack offset]
   (let [r (* 1.05 radius)
         w (* r (Math/cos 45))
         h (* r (Math/sin 45))
         pos (if vertical-stack
-              (fn [x y] {:x (* x w) :y (* y h)})
-              (fn [y x] {:x (* x h) :y (* y w)}))]
+              (fn [x y] {:x (+ (:x offset) (* x w)) :y (+ (:y offset) (* y h))})
+              (fn [y x] {:x (+ (:x offset) (* x h)) :y (+ (:y offset) (* y w))}))]
     {
      :solids  (shuffle [(pos 0 0) (pos 1 1) (pos -2 2) (pos -1 3)
                         (pos 3 3) (pos -4 4) (pos 2 4)])
      :stripes (shuffle [(pos -1 1) (pos 1 2) (pos -3 3) (pos 1 3)
                         (pos -2 4) (pos 0 4) (pos 4 4)])
      :eight   [(pos 0 2)]
-     :cue     [(pos 0 -20)]
+     :cue     [(pos 0 -10)]
      }))
-(defn rack-balls [balls vertical-stack]
-  (let [p (racked-positions (:radius (first balls)) vertical-stack)]
+(defn rack-balls [balls vertical-stack offset]
+  (let [p (racked-positions (:radius (first balls)) vertical-stack offset)]
     (loop [[b & rem] balls
            p p
            racked-balls []]
@@ -89,7 +89,9 @@
                                           (assoc :x (:x (first (get p next-pos))))
                                           (assoc :y (:y (first (get p next-pos)))))))))))))
 (defn rack-table [table]
-  (assoc table :balls (sort-by :num (rack-balls (:balls table) (:vertical-stack table)))))
+  (assoc table :balls (sort-by :num (rack-balls (:balls table)
+                                                (:vertical-stack table)
+                                                {:x (/ (:width table) 2) :y (/ (:height table) 2)}))))
 
 (defn step-ball [step-size table ball]
   (let [friction (:friction table)
@@ -184,7 +186,7 @@
       (recur (step-table step-size t) (inc ct)))))
 
 (comment "Ball defs"
-  (def table (rack-table (create-table :regular 200 200)))
+  (def table (rack-table (create-table :regular 400 300)))
   (def ball (-> (create-ball 1)
                 (assoc-in [:velocity :x] 100)
                 (assoc-in [:velocity :y] -100)))
