@@ -2,13 +2,7 @@
   (:require [clojure.core.async :as a
                                 :refer [>! <! >!! <!! go chan buffer close! thread
                                         alts! alts!! timeout]]
-            [clojure.test :refer [run-tests]])
-  )
-
-(defn tests []
-  ;(require 'clj-billiards.core-test :reload-all)
-  (run-tests 'clj-billiards.core-test)
-)
+            [clj-billiards.vector :as v]))
 
 ; Idea here. Create a billiards game based on Tables that players can start playing at.
 ; Then simulate a pool hall tournament by having a bracket and as each match ends new players are able to get assigned to the table.
@@ -43,15 +37,15 @@
 (defn create-ball [num] "Creates a basic ball for "
   {:num num :x 0 :y 0 :radius 10 :weight 100
    :velocity {:x 0 :y 0}})
-(defn rack [balls centers]
-  (if (not (= (count balls) (count centers)))
-    (throw (RuntimeException. (str "Racking failed due to mismatch in counts. " (count balls) " " (count centers)))))
-  (loop [[ball & rem-balls] balls
-         [c & rem-centers] (shuffle centers)
-         racked-balls []]
-    (if (nil? ball)
-      racked-balls
-      (recur rem-balls rem-centers (conj racked-balls (assoc (assoc ball :x (:x c)) :y (:y c)))))))
+(defn create-table [material-type width height]
+  {
+   :balls    (map create-ball (range 16))
+   :friction (:friction (material-type->properties material-type))
+   :width    width
+   :height   height
+   :vertical-stack true
+  })
+
 ; cos 45 == .525321988818
 ; sin 45 == .850903524534
 ;            [0,0]
@@ -59,17 +53,13 @@
 ;      [-2,2]<0,2>(2,2)
 ;   (-3,3)[-1,3](1,3)[3,3]
 ; [-4,4](-2,4)(0,4)[2,4](4,4)
-(defn positions [radius vertical-stack]
+(defn racked-positions [radius vertical-stack]
   (let [r (* 1.05 radius)
-        w (if vertical-stack
-            (* r (Math/cos 45))
-            (* r (Math/sin 45)))
-        h (if vertical-stack
-            (* r (Math/sin 45))
-            (* r (Math/cos 45)))
+        w (* r (Math/cos 45))
+        h (* r (Math/sin 45))
         pos (if vertical-stack
               (fn [x y] {:x (* x w) :y (* y h)})
-              (fn [y x] {:x (* x w) :y (* y h)}))]
+              (fn [y x] {:x (* x h) :y (* y w)}))]
     {
      :solids  (shuffle [(pos 0 0) (pos 1 1) (pos -2 2) (pos -1 3)
                         (pos 3 3) (pos -4 4) (pos 2 4)])
@@ -79,7 +69,7 @@
      :cue     [(pos 0 -20)]
      }))
 (defn rack-balls [balls vertical-stack]
-  (let [p (positions (:radius (first balls)) vertical-stack)]
+  (let [p (racked-positions (:radius (first balls)) vertical-stack)]
     (loop [[b & rem] balls
            p p
            racked-balls []]
@@ -100,28 +90,6 @@
                                           (assoc :y (:y (first (get p next-pos)))))))))))))
 (defn rack-table [table]
   (assoc table :balls (sort-by :num (rack-balls (:balls table) (:vertical-stack table)))))
-(defn create-table [material-type width height] {
-  :balls    (map create-ball (range 16))
-  :friction (:friction (material-type->properties material-type))
-  :width    width
-  :height   height
-  :vertical-stack true
-})
-
-(defn create-testing-table [width height]
-  (let [b1 (-> (create-ball 1)
-               (assoc-in [:velocity :x] 10)
-           )
-        b2 (-> (create-ball 2)
-               (assoc-in [:x] 40)
-               (assoc-in [:y] 5)
-               )]
-   {
-    :balls    [b1 b2]
-    :friction (:friction (material-type->properties "regular"))
-    :width    width
-    :height   height
-  }))
 
 (defn step-ball [step-size table ball]
   (let [friction (:friction table)
@@ -144,6 +112,7 @@
       (assoc-in [:velocity :x] 0)
       (assoc-in [:velocity :y] 0)
 ))
+
 (defn intersects? [ball-a ball-b]
   (let [x-diff (- (:x ball-a) (:x ball-b))
         y-diff (- (:y ball-a) (:y ball-b))
@@ -162,51 +131,14 @@
         (concat v (filter some? (map
                                 (fn [a] (if (intersects? a b)
                                           [a b])) rem)))))))
-(defn translate-frame-of-reference [v-a v-b]
-  [(-> v-a
-    (assoc :x (- (:x v-a) (:x v-b)))
-    (assoc :y (- (:y v-a) (:y v-b))))
-  (-> v-b
-    (assoc :x 0)
-    (assoc :y 0))])
-(defn v-dot [v-a v-b]
-  (+ (* (:x v-a) (:x v-b))
-     (* (:y v-a) (:y v-b))))
-(defn v-magnitude [v]
-  (Math/sqrt (+ (Math/pow (:x v) 2)
-                (Math/pow (:y v) 2))))
-(defn v-sub [v-a v-b]
-  {:x (- (:x v-a) (:x v-b))
-   :y (- (:y v-a) (:y v-b))})
-(defn v-scale [c v]
-  {:x (* c (:x v))
-   :y (* c (:y v))})
 
-; https://en.wikipedia.org/wiki/Elastic_collision
-(defn v1-prime [v-a v-b c-a c-b]
-  (let [v-prime (v-sub v-a
-                       (v-scale (/ (v-dot (v-sub v-a v-b)
-                                          (v-sub c-a c-b))
-                                   (Math/pow (v-magnitude (v-sub c-a c-b))
-                                             2))
-                                (v-sub c-a c-b)))]
-    (if (or (Double/isNaN (:x v-prime)) (Double/isNaN  (:y v-prime)))
-      v-a
-      v-prime))
-  )
-(defn v2-prime [v-a v-b c-a c-b] (v1-prime v-b v-a c-b c-a))
-
-; Physics for math equations
-; Vai = Vbf
-; Vaf = -Vbi
-; Note: Since we're not striking the balls directly at the center every time, I think we'll need to adjust the forces based on angle towards center. Then apply the change in velocities based on impacted force towards the center.
 ; Will completely avoid spin for now.
 (defn handle-collision [ball-a ball-b]
   (if (intersects? ball-a ball-b)
     (let [ca {:x (:x ball-a) :y (:y ball-a)}
           cb {:x (:x ball-b) :y (:y ball-b)}
-          va-prime (v1-prime (:velocity ball-a) (:velocity ball-b) ca cb)
-          vb-prime (v2-prime (:velocity ball-a) (:velocity ball-b) ca cb)]
+          va-prime (v/collision-v1 (:velocity ball-a) (:velocity ball-b) ca cb)
+          vb-prime (v/collision-v2 (:velocity ball-a) (:velocity ball-b) ca cb)]
       ;(prn "Collision between " (:num ball-a) " and " (:num ball-b))
       ;(prn ca cb)
       ;(prn (:velocity ball-a) (:velocity ball-b) (:num ball-a))
@@ -250,34 +182,17 @@
     (if (= ct max-steps)
       t
       (recur (step-table step-size t) (inc ct)))))
-(defn sim-ball-alone [iBall max-steps step-size table]
-  (let [ball iBall]
-    (loop [b ball
-           ct 0]
-      (if (or (= ct max-steps) (stopped? b))
-        (do (prn "stopped?") (stop-ball b))
-        (recur (step-ball step-size table b) (inc ct))))))
 
 (comment "Ball defs"
-  (def default-table (rack-table (create-table :regular 200 200)))
-  (def test-table (create-testing-table 200 200))
-  (def stationary-ball (create-ball 1))
-  (def x-moving-ball (assoc-in (create-ball 1) [:velocity :x] 10))
-  (def y-moving-ball (assoc-in (create-ball 1) [:velocity :y] -10))
-  (def xy-moving-ball (-> (create-ball 1)
-                         (assoc-in [:velocity :x] 100)
-                         (assoc-in [:velocity :y] -100)))
-  (def ball xy-moving-ball)
-  (def table default-table)
-  (def table test-table)
+  (def table (rack-table (create-table :regular 200 200)))
+  (def ball (-> (create-ball 1)
+                (assoc-in [:velocity :x] 100)
+                (assoc-in [:velocity :y] -100)))
   (def balls (:balls table))
   (def all-balls (:balls table))
-  (def ball-a (first balls))
-  (def ball-b (second balls))
   (def step-size 100)
   (def friction 0.97)
   (def friction 0.999)
-  (sim-ball-alone ball 2000 100 table)
   (step-ball ball 100 table ball)
   (step-table 10 table)
   (sim-table 2000 100 table)
